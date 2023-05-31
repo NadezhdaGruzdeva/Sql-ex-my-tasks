@@ -1358,6 +1358,304 @@ FROM
 	date_trip_qty
 WHERE qty = (SELECT MAX(qty) FROM date_trip_qty)
 
+-- Задание: 78 (Serge I: 2005-01-19)
+-- Для каждого сражения определить первый и последний день
+-- месяца,
+-- в котором оно состоялось.
+-- Вывод: сражение, первый день месяца, последний
+-- день месяца.
+-- Замечание: даты представить без времени в формате "yyyy-mm-dd".
+
+SELECT
+	name,
+	DATEFROMPARTS(
+			DATEPART(year, [date]), 
+			DATEPART(month, [date]), 
+			1) AS firstD,
+	DATEADD(day, -1, -- посл день тек мес - это первый день следующего месяца -1 день
+		DATEFROMPARTS( ---  первый день следующего месяца
+			DATEPART(-- год не можем взять тем же, тк не учитывается возможный переход на сл. год)
+				year,
+				DATEADD(month, 1,[date])),
+			DATEPART(
+				month,
+				DATEADD(month, 1,[date])), 
+				1)
+		
+	)AS lastD
+					
+FROM
+	Battles
+
+-- conver data syles 
+-- https://learn.microsoft.com/ru-ru/sql/t-sql/functions/cast-and-convert-transact-sql?view=sql-server-ver16
+
+-- Задание: 79 (Serge I: 2003-04-29)
+-- Определить пассажиров, которые больше других времени провели в полетах.
+-- Вывод: имя пассажира, общее время в минутах, проведенное в полетах
+WITH 
+pass_time_f AS(
+	SELECT
+		Pass_in_trip.ID_psg,
+		SUM(DATEDIFF(
+				minute, 
+				time_out, 
+				CASE
+					WHEN time_in > time_out THEN time_in
+					ELSE DATEADD(day, 1, time_in)
+				END)) AS time_f	
+	FROM
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no
+	GROUP BY Pass_in_trip.ID_psg)
+-------------------------------------------------------------------
+SELECT
+	COALESCE(name, 'unkonown name') AS name,
+	time_f
+FROM
+	Passenger
+RIGHT JOIN
+	pass_time_f
+ON pass_time_f.ID_psg = Passenger.ID_psg
+WHERE
+	time_f = (SELECT MAX(time_f) FROM pass_time_f)
+
+-- Задание: 80 (Baser: 2011-11-11)
+-- Найти производителей любой компьютерной техники, у которых нет моделей ПК, не представленных в таблице PC
+
+SELECT 
+	maker
+FROM	
+	product
+EXCEPT
+SELECT 
+	maker
+FROM	
+	product
+	WHERE type = 'PC' AND model NOT IN(
+		SELECT model FROM PC)
+
+-- Задание: 81 (Serge I: 2011-11-25)
+-- Из таблицы Outcome получить все записи за тот месяц (месяцы), с учетом года, в котором суммарное значение расхода (out) было максимальным.
+---меньше на 11 запис , у мня учтен только 1 месяц
+WITH 
+month_out AS(
+	SELECT
+		SUM(out) AS out,
+		DATEFROMPARTS(
+			DATEPART(year, [date]),
+			DATEPART(month, [date]),
+			1
+		) AS month
+	FROM
+		Outcome
+	GROUP BY DATEFROMPARTS(
+			DATEPART(year, [date]),
+			DATEPART(month, [date]),
+			1
+		)
+)
+----------------------------------------------------
+SELECT
+	*
+FROM
+	Outcome
+WHERE 
+	DATEPART(year, [date]) = DATEPART(year, (
+		SELECT month FROM month_out
+		WHERE 
+			out = (SELECT MAX(out) FROM month_out))) AND
+	DATEPART(month, [date]) = DATEPART(month, (
+		SELECT month FROM month_out
+		WHERE 
+			out = (SELECT MAX(out) FROM month_out)))
+_______________________________________________________________________________________	
+-- мб несколько месяцев
+WITH 
+month_out AS(
+	SELECT
+		SUM(out) AS out,
+		DATEFROMPARTS(
+			DATEPART(year, [date]),
+			DATEPART(month, [date]),
+			1
+		) AS month
+	FROM
+		Outcome
+	GROUP BY DATEFROMPARTS(
+			DATEPART(year, [date]),
+			DATEPART(month, [date]),
+			1
+		)
+)
+----------------------------------------------------
+SELECT
+	*
+FROM
+	Outcome
+WHERE 
+	DATEFROMPARTS(
+		DATEPART(year, [date]),
+		DATEPART(month, [date]),
+		1
+	)
+	IN (
+		SELECT month FROM month_out
+		WHERE out = (SELECT MAX(out) FROM month_out))
+
+-- Задание: 82 (Serge I: 2011-10-08)
+-- В наборе записей из таблицы PC, отсортированном по столбцу code (по возрастанию) найти среднее значение цены для каждой шестерки подряд идущих ПК.
+-- Вывод: значение code, которое является первым в наборе из шести строк, среднее значение цены в наборе
+
+
+-- МНЕ КАЖЕТСЯ НА САЙТЕ ОШИБКА
+-- Результаты выполнения
+-- Вашего запроса:
+ 	
+
+-- first_code	
+-- 1	783.3333
+-- 7	566.6666
+
+--  правильного запроса:	
+-- code	avgprс
+-- 1	783.3333
+-- 2	750.0000
+-- 3	666.6666
+-- 4	625.0000
+-- 5	541.6666
+-- 6	563.3333
+-- 7	566.6666
+
+вот МОЕ ПРАВИЛЬНОЕ РЕШЕНИЕ
+_________________________________________
+WITH 
+PC_group AS(
+	SELECT
+		NTILE((SELECT COUNT(*) FROM PC)/6) OVER(ORDER BY code) AS gr_n,
+		*
+	FROM 
+		PC
+),
+PC_qroup_first_code AS( ------жаль, что нельзя в PARTION BY обратитца к другому окну
+	SELECT
+		MIN(code) OVER(PARTITION BY gr_n) AS first_code,
+		*
+	FROM 
+		PC_group
+)
+-------------------------------------------
+SELECT
+	first_code,
+	AVG (price) as avg_price
+FROM 
+	PC_qroup_first_code
+GROUP BY 
+	first_code
+
+-- Задание: 83 (dorin_larsen: 2006-03-14)
+-- Определить названия всех кораблей из таблицы Ships, которые удовлетворяют, по крайней мере, комбинации любых четырёх критериев из следующего списка:
+-- numGuns = 8
+-- bore = 15
+-- displacement = 32000
+-- type = bb
+-- launched = 1915
+-- class=Kongo
+-- country=USA
+
+-- ГОРДОСТЬ
+
+SELECT
+	name
+FROM
+	Ships
+JOIN
+	Classes
+ON Ships.class = Classes.class
+WHERE
+	4 <= 
+		CASE	
+			WHEN numGuns = 8 THEN 1
+			ELSE 0
+		END +
+		CASE	
+			WHEN bore = 15 THEN 1
+			ELSE 0
+		END +
+		CASE	
+			WHEN displacement = 32000 THEN 1
+			ELSE 0
+		END +
+		CASE	
+			WHEN type = 'bb' THEN 1
+			ELSE 0
+		END +			
+		CASE	
+			WHEN launched = 1915 THEN 1
+			ELSE 0
+		END +
+		CASE	
+			WHEN Ships.class = 'Kongo' THEN 1
+			ELSE 0
+		END +
+		CASE	
+			WHEN country = 'USA' THEN 1
+			ELSE 0
+		END 
+
+
+-- Задание: 84 (Serge I: 2003-06-05)
+-- Для каждой компании подсчитать количество перевезенных пассажиров (если они были в этом месяце) по декадам апреля 2003. При этом учитывать только дату вылета.
+-- Вывод: название компании, количество пассажиров за каждую декаду
+
+-- ГОРДОСТЬ
+WITH 
+comp_pass_by_decades AS(
+	SElECT 
+		Company.name,
+		date,
+		COUNT(Pass_in_trip.ID_psg) as total,
+		CASE
+			WHEN date BETWEEN '2003-04-01 00:00:00' AND '2003-04-10 23:59:59'
+			THEN COUNT(Pass_in_trip.ID_psg)
+			ELSE 0
+		END AS qty_1_10,
+		CASE
+			WHEN date BETWEEN '2003-04-11 00:00:00' AND '2003-04-20 23:59:59'
+			THEN COUNT(Pass_in_trip.ID_psg)
+			ELSE 0
+		END AS qty_11_20,
+		CASE
+			WHEN date BETWEEN '2003-04-21 00:00:00' AND '2003-04-30 23:59:59'
+			THEN COUNT(Pass_in_trip.ID_psg)
+			ELSE 0
+		END AS qty_21_30
+	FROM
+		Company
+	JOIN	
+		Trip
+	ON Company.ID_comp = Trip.ID_comp
+	JOIN
+		Pass_in_trip
+	ON 
+		Trip.trip_no = Pass_in_trip.trip_no
+	WHERE 
+		date BETWEEN '2003-04-01 00:00:00' AND '2003-04-30 23:59:59'
+	GROUP BY 
+		Company.name,
+		date)
+------------------------------------------------------
+SELECT
+	name,
+	SUM(qty_1_10) AS qty_1_10,
+	SUM(qty_11_20) AS qty_11_20,
+	SUM(qty_21_30) AS qty_21_30
+FROM
+	comp_pass_by_decades
+GROUP BY
+	name
 
 
 
@@ -1367,37 +1665,6 @@ WHERE qty = (SELECT MAX(qty) FROM date_trip_qty)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
----Задание: 83 (dorin_larsen: 2006-03-14)
-Определить названия всех кораблей из таблицы Ships, которые удовлетворяют, по крайней мере, комбинации любых четырёх критериев из следующего списка:
-numGuns = 8
-bore = 15
-displacement = 32000
-type = bb
-launched = 1915
-class=Kongo
-country=USA
 
 -- Задание: 89 (Serge I: 2012-05-04)
 -- Найти производителей, у которых больше всего моделей в таблице Product, а также тех, у которых меньше всего моделей.

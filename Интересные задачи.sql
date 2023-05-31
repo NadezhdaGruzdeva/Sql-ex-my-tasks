@@ -1243,39 +1243,9 @@ ON o.ship = c.class OR
 	s.class = c.class
 GROUP BY battle, country
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 -- Задание: 74 (dorin_larsen: 2007-03-23)
 -- Вывести все классы кораблей России (Russia). Если в базе данных нет классов кораблей России, вывести классы для всех имеющихся в БД стран.
 Вывод: страна, класс
-
-
 
 SELECT 
 	country, class
@@ -1320,6 +1290,104 @@ HAVING
 	MAX(pc_price) IS NOT NULL OR
 	MAX(Printer_price) IS NOT NULL
 	
+-- Задание: 76 (Serge I: 2003-08-28)
+-- Определить время, проведенное в полетах, для пассажиров, летавших всегда на разных местах. Вывод: имя пассажира, время в минутах.
+
+WITH 
+pass_seats_same_place AS(
+	SElECT	
+		ID_psg,
+		place,
+		COUNT(trip_no) qty
+	FROM 
+		Pass_in_trip
+	GROUP by
+		ID_psg,
+		place
+	HAVING 
+		COUNT(trip_no) > 1),
+pass_seats_same_place_time AS(
+	SElECT
+		ID_psg,
+		SUM(DATEDIFF(
+			minute, 
+			time_out, 
+			CASE
+				WHEN time_in > time_out THEN time_in
+				ELSE DATEADD(day, 1, time_in)
+			END)) AS time_f	
+	FROM 
+		Pass_in_trip
+	JOIN 
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no
+	WHERE 
+		ID_psg NOT IN (SELECT ID_psg FROM pass_seats_same_place)
+	GROUP BY ID_psg)
+------------------------------------------
+SELECT
+	name,
+	time_f
+FROM
+	pass_seats_same_place_time
+JOIN
+	Passenger
+ON 
+pass_seats_same_place_time.ID_psg = Passenger.ID_psg
+
+-- Задание: 77 (Serge I: 2003-04-09)
+-- Определить дни, когда было выполнено максимальное число рейсов из
+-- Ростова ('Rostov'). Вывод: число рейсов, дата.
+
+WITH 
+date_trip_qty AS(
+	SELECT DISTINCT
+		COUNT(DISTINCT Trip.trip_no) AS qty,
+		[date]
+	FROM 
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no
+	WHERE town_from = 'Rostov'
+	GROUP BY [date])
+-----------------------------------------------
+SELECT
+	*
+FROM
+	date_trip_qty
+WHERE qty = (SELECT MAX(qty) FROM date_trip_qty)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ---Задание: 83 (dorin_larsen: 2006-03-14)
 Определить названия всех кораблей из таблицы Ships, которые удовлетворяют, по крайней мере, комбинации любых четырёх критериев из следующего списка:

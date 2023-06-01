@@ -1657,14 +1657,242 @@ FROM
 GROUP BY
 	name
 
+-- Задание: 85 (Serge I: 2012-03-16)
+-- Найти производителей, которые выпускают только принтеры или только PC.
+-- При этом искомые производители PC должны выпускать не менее 3 моделей.
+
+WITH
+maker_type_qty_model AS(
+	SELECT
+		maker,
+		type,
+		COUNT(model) qty
+	FROM
+		Product
+	GROUP BY 
+		maker,
+		type
+)
+----------------------------------------
+SELECT ---------Найти производителей, которые выпускают только принтеры 
+	maker 
+FROM
+	maker_type_qty_model
+WHERE 
+	type = 'Printer' AND
+	maker NOT IN (
+		SELECT maker FROM maker_type_qty_model
+		WHERE type != 'Printer'
+	 )
+UNION
+SELECT ---------Найти производителей, которые выпускают только только PC 
+	maker 
+FROM
+	maker_type_qty_model
+WHERE 
+	qty >= 3 AND
+	type = 'PC' AND
+	maker NOT IN (
+		SELECT maker FROM maker_type_qty_model
+		WHERE type != 'PC'
+	 )
+
+-- Задание: 86 (Serge I: 2012-04-20)
+-- Для каждого производителя перечислить в алфавитном порядке с разделителем "/" все типы выпускаемой им продукции.
+-- Вывод: maker, список типов продукции
+
+-- MySQL
+SELECT
+	maker,
+	GROUP_CONCAT(
+		DISTINCT type  
+		ORDER BY type 
+		SEPARATOR '/') AS types
+FROM
+	Product
+GROUP BY maker
+
+-- Задание: 87 (Serge I: 2003-08-28)
+-- Считая, что пункт самого первого вылета пассажира является местом жительства, найти не москвичей, которые прилетали в Москву более одного раза.
+-- Вывод: имя пассажира, количество полетов в Москву
+
+-- ОШИБКА 8 пассажир одновременно вылетал из разных городов
+
+WITH
+pass_date_from_to_num_trip AS(
+	SELECT
+		ID_psg,
+		date,
+		town_to,
+		town_from,
+		ROW_NUMBER() OVER( --номер поездки пассажира в хронологич порядке
+			PARTITION BY ID_psg
+			ORDER BY date) AS pass_trip_num
+	FROM
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no 
+	--- WHERE pass_trip_num = 1  - не фильтруется по окошку, Это вам не MySQL)))
+),
+pass_origin AS(
+	SELECT
+		ID_psg,
+		town_from AS origin
+	FROM
+		pass_date_from_to_num_trip
+	WHERE pass_trip_num = 1)
+-------------------------------------------------------
+SELECT
+	name,
+	COUNT(*) as qty
+FROM
+	Passenger
+JOIN
+	pass_date_from_to_num_trip
+ON Passenger.ID_psg = pass_date_from_to_num_trip.ID_psg
+JOIN
+	pass_origin
+ON 
+	Passenger.ID_psg = pass_origin.ID_psg
+WHERE 
+	town_to = 'Moscow' AND
+	origin != 'Moscow'
+GROUP BY name
+HAVING COUNT(*) > 1
+_______________________________________________________________________
+-- Когда несколько вылетов в одно и то же время мы можем их всех учесть используя RANK
+-- Ваш запрос вернул правильные данные на основной базе, но не прошел тест на проверочной базе.
+-- * Неверное число записей (меньше на 4)
 
 
+WITH
+pass_date_from_to_num_trip AS(
+	SELECT
+		ID_psg,
+		date,
+		town_to,
+		town_from,
+		RANK() OVER( --номер поездки пассажира в хронологич порядке
+			PARTITION BY ID_psg
+			ORDER BY date) AS pass_trip_num
+	FROM
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no 
+	--- WHERE pass_trip_num = 1  - не фильтруется по окошку, Это вам не MySQL)))
+),
+pass_origin AS(
+	SELECT DISTINCT
+		ID_psg,
+		town_from AS origin
+	FROM
+		pass_date_from_to_num_trip
+	WHERE pass_trip_num = 1)
+-------------------------------------------------------
+SELECT
+	name,
+	COUNT(*) as qty
+FROM
+	Passenger
+JOIN
+	pass_date_from_to_num_trip
+ON Passenger.ID_psg = pass_date_from_to_num_trip.ID_psg
+JOIN
+	pass_origin
+ON 
+	Passenger.ID_psg = pass_origin.ID_psg
+WHERE 
+	town_to = 'Moscow' AND
+	origin = 'Moscow'
+GROUP BY Passenger.ID_psg, name
+HAVING COUNT(*) > 1
+____________________________________________________________
+-- все не то, есть же столбец со времением вылета))
+-- ГОРДОСТЬ
 
+WITH
+pass_date_from_to_num_trip AS(
+	SELECT
+		ID_psg,
+		date,
+		town_to,
+		town_from,
+		ROW_NUMBER() OVER( --номер поездки пассажира в хронологич порядке
+			PARTITION BY ID_psg
+			ORDER BY date, time_out) AS pass_trip_num
+	FROM
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no 
+),
+pass_origin AS(
+	SELECT DISTINCT
+		ID_psg,
+		town_from AS origin
+	FROM
+		pass_date_from_to_num_trip
+	WHERE pass_trip_num = 1)
+-------------------------------------------------------
+SELECT
+	name,
+	COUNT(*) as qty
+FROM
+	Passenger
+JOIN
+	pass_date_from_to_num_trip
+ON Passenger.ID_psg = pass_date_from_to_num_trip.ID_psg
+JOIN
+	pass_origin
+ON 
+	Passenger.ID_psg = pass_origin.ID_psg
+WHERE 
+	town_to = 'Moscow' AND
+	origin != 'Moscow'
+GROUP BY Passenger.ID_psg, name
+HAVING COUNT(*) > 1
 
-
-
-
-
+-- Задание: 88 (Serge I: 2003-04-29)
+-- Среди тех, кто пользуется услугами только одной компании, 
+-- определить имена разных пассажиров, летавших чаще других.
+-- Вывести: имя пассажира, число полетов и название компании.
+WITH
+pass_com_trip_qty_using_comp AS(
+	SELECT
+		ID_psg,
+		ID_comp,
+		COUNT(*) qty,
+		COUNT(*) OVER (PARTITION BY ID_psg) as using_comp
+	FROM
+		Pass_in_trip
+	JOIN
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no 
+	GROUP BY
+		ID_psg,
+		ID_comp
+)
+-------------------------------------------------
+SELECT
+	Passenger.name,
+	qty,
+	Company.name
+FROM
+	Passenger
+JOIN
+	pass_com_trip_qty_using_comp AS t
+ON Passenger.ID_psg = t.ID_psg
+JOIN
+	Company
+ON t.ID_comp = Company.ID_comp
+WHERE 
+	using_comp = 1 AND
+	qty = (
+		SELECT MAX(qty) 
+		FROM pass_com_trip_qty_using_comp
+		WHERE using_comp = 1)
 
 -- Задание: 89 (Serge I: 2012-05-04)
 -- Найти производителей, у которых больше всего моделей в таблице Product, а также тех, у которых меньше всего моделей.
@@ -1689,11 +1917,89 @@ WHERE
 	qty = (SELECT MAX(qty) FROM maker_model_qty) OR
 	qty = (SELECT MIN(qty) FROM maker_model_qty)
 	
+-- Задание: 90 (Serge I: 2012-05-04)
+-- Вывести все строки из таблицы Product, кроме трех строк 
+-- с наименьшими номерами моделей и трех строк с наибольшими номерами моделей.
 
+-- не работает
 
+SELECT 
+	*
+FROM 
+	Product
 
+EXCEPT
 
+SELECT 
+	TOP 3 *
+FROM 
+	Product
+ORDER BY 
+	model DESC
 
+EXCEPT
+
+SELECT 
+	TOP 3 *
+FROM 
+	Product
+ORDER BY 
+	model 
+_____________________________________
+
+WITH
+head3 AS(
+	SELECT 
+		TOP 3 *
+	FROM 
+		Product
+	ORDER BY 
+		model
+	),
+tail3 AS(
+	SELECT 
+		TOP 3 *
+	FROM 
+		Product
+	ORDER BY 
+		model DESC
+)
+---------------------------
+SELECT 
+	*
+FROM 
+	Product
+EXCEPT
+SELECT 
+	*
+FROM 
+	head3
+EXCEPT
+SELECT 
+	*
+FROM 
+	tail3
+
+-- Задание: 91 (Serge I: 2015-03-20)
+-- C точностью до двух десятичных знаков определить среднее количество краски на квадрате.
+WITH 
+q_all_vol AS(
+	SELECT
+		Q_ID,
+		COALESCE(SUM(B_VOL),0) vol
+	FROM
+		utQ
+	LEFT JOIN
+		utB
+	ON utQ.Q_ID = utB.B_Q_ID
+	GROUP BY
+		Q_ID
+)
+-------------------------------------
+SELECT
+	CAST(AVG(vol*1.0) AS NUMERIC(6,2)) 
+FROM
+	q_all_vol
 
 -- Задание: 92 (ZrenBy: 2003-09-01)
 -- Выбрать все белые квадраты, которые окрашивались только из баллончиков,
@@ -1788,6 +2094,75 @@ WHERE
 	total_Q_VOL = 255 * 3 AND
 	total_V_VOL < 255
 	
+-- Задание: 93 (Serge I: 2003-06-05)
+-- Для каждой компании, перевозившей пассажиров, подсчитать время, 
+-- которое провели в полете самолеты с пассажирами.
+-- Вывод: название компании, время в минутах.
+
+WITH 
+pass_seats_same_place AS(
+	SElECT	
+		ID_psg,
+		place,
+		COUNT(trip_no) qty
+	FROM 
+		Pass_in_trip
+	GROUP by
+		ID_psg,
+		place
+	HAVING 
+		COUNT(trip_no) > 1),
+pass_seats_same_place_time AS(
+	SElECT
+		ID_psg,
+		SUM(DATEDIFF(
+			minute, 
+			time_out, 
+			CASE
+				WHEN time_in > time_out THEN time_in
+				ELSE DATEADD(day, 1, time_in)
+			END)) AS time_f	
+	FROM 
+		Pass_in_trip
+	JOIN 
+		Trip
+	ON Pass_in_trip.trip_no = Trip.trip_no
+	WHERE 
+		ID_psg NOT IN (SELECT ID_psg FROM pass_seats_same_place)
+	GROUP BY ID_psg)
+------------------------------------------
+SELECT
+	name,
+	time_f
+FROM
+	pass_seats_same_place_time
+JOIN
+	Passenger
+ON 
+pass_seats_same_place_time.ID_psg = Passenger.ID_psg
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

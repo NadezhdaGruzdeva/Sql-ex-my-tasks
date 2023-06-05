@@ -28,6 +28,22 @@ SELECT model,
 FROM product
 
 -- я бы решала с помощью цикла https/stackoverflow.com/questions/38665486/sum-of-digits-in-sql
+______________________________________________________________
+с использованием переменных
+SELECT model, 
+    1 * (@length := DATALENGTH(model) - DATALENGTH(REPLACE(model, '1', ''))) +
+    2 * (@length - DATALENGTH(REPLACE(model, '2', ''))) +
+    3 * (@length - DATALENGTH(REPLACE(model, '3', ''))) +
+    4 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '4', ''))) +
+    5 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '5', ''))) +
+    6 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '6', ''))) +
+    7 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '7', ''))) +
+    8 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '8', ''))) +
+    9 * (DATALENGTH(model) - DATALENGTH(REPLACE(model, '9', ''))) AS 'qty'
+FROM product
+
+
+
 
 /* Задание: 3 (Serge I: 2007-08-03)
 Для таблицы Product получить результирующий набор в виде таблицы со столбцами maker, pc, laptop и printer, в которой для каждого производителя требуется указать, производит он (yes) или нет (no) соответствующий тип продукции.
@@ -2099,47 +2115,173 @@ WHERE
 -- которое провели в полете самолеты с пассажирами.
 -- Вывод: название компании, время в минутах.
 
+-- !! не учтено что рейсы летают в разные дни, указанные в Pass_in_trip
+SElECT 
+	Company.name,
+	SUM(DATEDIFF(
+		minute, 
+		time_out, 
+		CASE
+			WHEN time_in > time_out THEN time_in
+			ELSE DATEADD(day, 1, time_in)
+		END)) AS time_f	
+FROM 
+	Trip
+JOIN Company
+ON Trip.ID_comp = Company.ID_comp
+WHERE Trip.trip_no IN(SELECT trip_no FROM Pass_in_trip)	 
+GROUP BY 	
+	Trip.ID_comp,
+	Company.name
+_______________________________________________
 WITH 
-pass_seats_same_place AS(
-	SElECT	
-		ID_psg,
-		place,
-		COUNT(trip_no) qty
-	FROM 
-		Pass_in_trip
-	GROUP by
-		ID_psg,
-		place
-	HAVING 
-		COUNT(trip_no) > 1),
-pass_seats_same_place_time AS(
-	SElECT
-		ID_psg,
-		SUM(DATEDIFF(
+comp_trip_date_min AS(
+	SElECT DISTINCT
+		Company.name, 
+		Trip.trip_no, 
+		date,
+		DATEDIFF(
 			minute, 
 			time_out, 
 			CASE
 				WHEN time_in > time_out THEN time_in
 				ELSE DATEADD(day, 1, time_in)
-			END)) AS time_f	
+			END) AS time_f	
 	FROM 
-		Pass_in_trip
-	JOIN 
 		Trip
-	ON Pass_in_trip.trip_no = Trip.trip_no
-	WHERE 
-		ID_psg NOT IN (SELECT ID_psg FROM pass_seats_same_place)
-	GROUP BY ID_psg)
-------------------------------------------
+	JOIN Company
+	ON Trip.ID_comp = Company.ID_comp
+	JOIN Pass_in_trip
+	ON Trip.trip_no = Pass_in_trip.trip_no)
+-----------------------------------------------------
 SELECT
 	name,
-	time_f
+	SUM(time_f) as time_f
+FROM	
+	comp_trip_date_min
+GROUP BY 	
+	name
+
+-- Задание: 94 (Serge I: 2003-04-09)
+-- Для семи последовательных дней, начиная от минимальной даты, когда из Ростова было совершено максимальное число рейсов, определить число рейсов из Ростова.
+-- Вывод: дата, количество рейсов
+-- ГОРДОСТЬ
+--LIMIT - MySQL, PgSQL
+-- generate_series - PG
+
+WITH
+trip_date_town_from AS(
+	SElECT DISTINCT
+		Trip.trip_no,
+		date, 
+		town_from
+	FROM 
+		Pass_in_trip
+	
+	JOIN Trip
+	ON Trip.trip_no = Pass_in_trip.trip_no),
+first_date AS
+	(SELECT 
+		COUNT(trip_no) as qty  ,
+		date
+	FROM
+		trip_date_town_from
+	WHERE 
+		town_from = 'Rostov'
+	GROUP BY date
+    ORDER BY 
+		qty DESC, 
+		date ASC
+	limit 1),
+last_date AS(
+	SELECT 
+		date   + interval '6' day as date -- PGSQL
+	FROM 
+		first_date),
+time_series AS(
+	SELECT generate_series(
+		(SELECT date FROM first_date), -- start
+		(SELECT date FROM last_date), -- stop, 
+		'1 day') AS date),
+Rostov_qty AS(
+	SELECT
+		date,
+		COUNT(*) as qty
+	FROM
+		trip_date_town_from
+	WHERE town_from = 'Rostov'
+	GROUP BY date
+)
+----------------------------------------------------------
+SELECT
+	time_series.date,
+	COALESCE(qty, 0)
 FROM
-	pass_seats_same_place_time
+	time_series
+LEFT JOIN
+	Rostov_qty
+ON time_series.date = Rostov_qty.date
+
+-- Задание: 95 (qwrqwr: 2013-02-08)
+-- На основании информации из таблицы Pass_in_Trip, для каждой авиакомпании определить:
+-- 1) количество выполненных перелетов;
+-- 2) число использованных типов самолетов;
+-- 3) количество перевезенных различных пассажиров;
+-- 4) общее число перевезенных компанией пассажиров.
+-- Вывод: Название компании, 1), 2), 3), 4).
+
+SElECT DISTINCT
+	Company.name, 
+	COUNT(DISTINCT CONCAT(date, Trip.trip_no)) as flights,
+	COUNT(DISTINCT plane) as plane,
+	COUNT(DISTINCT ID_psg) as psg,
+	COUNT(ID_psg) as sum_psg
+FROM 
+	Trip
+JOIN Company
+ON Trip.ID_comp = Company.ID_comp
+JOIN Pass_in_trip
+ON Trip.trip_no = Pass_in_trip.trip_no
+GROUP BY Company.name
+
+-- Задание: 96 (ZrenBy: 2003-09-01)
+-- При условии, что баллончики с красной краской использовались более одного раза, выбрать из них такие, которыми окрашены квадраты, имеющие голубую компоненту.
+-- Вывести название баллончика
+WITH 
+red_paint_use_more_then_once AS(
+	SELECT
+		B_V_ID,
+		COUNT(*) as qty
+	FROM 
+		utB
+	JOIN
+		utV
+	ON utB.B_V_ID = utV.V_ID
+	WHERE V_COLOR = 'R'
+	GROUP BY
+		B_V_ID
+	HAVING COUNT(*) > 1	
+),
+q_with_blue  AS(
+	SELECT
+		B_Q_ID
+	FROM 
+		utB
+	JOIN 
+		utV
+	ON utB.B_V_ID = utV.V_ID
+	WHERE V_COLOR = 'B')
+----------------------------------------------------
+SELECT DISTINCT
+	V_NAME
+FROM
+	utV
 JOIN
-	Passenger
-ON 
-pass_seats_same_place_time.ID_psg = Passenger.ID_psg
+	utB
+ON utB.B_V_ID = utV.V_ID
+WHERE 
+	B_V_ID IN (SELECT B_V_ID FROM red_paint_use_more_then_once) AND 
+	B_Q_ID IN (SELECT B_Q_ID FROM q_with_blue)
 
 
 
@@ -2157,6 +2299,187 @@ pass_seats_same_place_time.ID_psg = Passenger.ID_psg
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+-- Задание: 97 (qwrqwr: 2013-02-15)
+-- Отобрать из таблицы Laptop те строки, для которых выполняется следующее условие:
+-- значения из столбцов speed, ram, price, screen возможно расположить таким образом, что каждое последующее значение 
+-- будет превосходить предыдущее в 2 раза или более.
+-- Замечание: все известные характеристики ноутбуков больше нуля.
+-- Вывод: code, speed, ram, price, screen.
+
+
+_______________________________________________
+-- Ваш запрос вернул правильные данные на основной базе, но не прошел тест на проверочной базе.
+-- * Неверное число записей (меньше на 54)
+
+WITH
+int_lap AS( -- нужные нам поля, приведенные к ежиному типу
+	SELECT
+		code,
+		CAST(speed AS int) speed,
+		CAST(ram AS int) ram,
+		CAST(price AS int) price,
+		CAST(screen AS int) screen
+	FROM 
+		Laptop	
+),
+unpiv_check_2x AS( --unpivot, sort, проверка на то что в 2 раза больше
+	SELECT
+		code,
+		param,
+		value,
+		value /
+			LAG(value,1) OVER (PARTITION BY code ORDER BY code, value) -- предыдущий
+		as checker	
+	FROM 
+		int_lap
+	UNPIVOT(
+		value FOR param IN (
+			speed,
+			ram, 
+			price, 
+			screen
+	)
+	) AS t),
+exclude_list AS(-- те коды, не где параметр больше менее чем в 2раза
+	SELECT
+		code
+	FROM
+		unpiv_check_2x
+	WHERE
+		checker < 2 OR value IS Null OR value <= 0
+) 
+-----------------------------------------
+SElECT
+	code,
+	speed,
+	ram, 
+	price, 
+	screen
+FROM
+	Laptop
+WHERE
+	code NOT IN(SELECT code FROM exclude_list)
+____________________________________________________________
+-- ИЗменим тип преобразования с инт на реал 
+-- Ваш запрос вернул правильные данные на основной базе, но не прошел тест на проверочной базе.
+-- * Неверное число записей (больше на 2)
+
+WITH
+int_lap AS( -- нужные нам поля, приведенные к ежиному типу
+	SELECT
+		code,
+		CAST(speed AS real) speed,
+		CAST(ram AS real) ram,
+		CAST(price AS real) price,
+		CAST(screen AS real) screen
+	FROM 
+		Laptop	
+),
+unpiv_check_2x AS( --unpivot, sort, проверка на то что в 2 раза больше
+	SELECT
+		code,
+		param,
+		value,
+		value /
+			LAG(value,1) OVER (PARTITION BY code ORDER BY code, value) -- предыдущий
+		as checker	
+	FROM 
+		int_lap
+	UNPIVOT(
+		value FOR param IN (
+			speed,
+			ram, 
+			price, 
+			screen
+	)
+	) AS t),
+exclude_list AS(-- те коды, не где параметр больше менее чем в 2раза
+	SELECT
+		code
+	FROM
+		unpiv_check_2x
+	WHERE
+		checker < 2
+) 
+-----------------------------------------
+SElECT
+	code,
+	speed,
+	ram, 
+	price, 
+	screen
+FROM
+	Laptop
+WHERE
+	code NOT IN(SELECT code FROM exclude_list)
+____________________________________________________________
+-- ИЗменим  exclude_list на иклюд
+-- посчитав значения, так как в проверочном дс похоже есть Null
+-- ГОРДОСТЬ 
+
+WITH
+int_lap AS( -- нужные нам поля, приведенные к ежиному типу
+	SELECT
+		code,
+		CAST(speed AS real) speed,
+		CAST(ram AS real) ram,
+		CAST(price AS real) price,
+		CAST(screen AS real) screen
+	FROM 
+		Laptop	
+),
+unpiv_check_2x AS( --unpivot, sort, проверка на то что в 2 раза больше
+	SELECT
+		code,
+		param,
+		value,
+		value /
+			LAG(value,1) OVER (PARTITION BY code ORDER BY code, value) -- предыдущий
+		as checker	
+	FROM 
+		int_lap
+	UNPIVOT(
+		value FOR param IN (
+			speed,
+			ram, 
+			price, 
+			screen
+	)
+	) AS t),
+include_list AS(-- те коды, не где параметр больше  чем в 2раза и их 3 штуки в коде
+	SELECT
+		code
+                
+	FROM
+		unpiv_check_2x
+	WHERE
+		checker >= 2
+	GROUP BY code
+        HAVING COUNT(*) = 3
+
+) 
+-----------------------------------------
+SElECT
+	code,
+	speed,
+	ram, 
+	price, 
+	screen
+FROM
+	Laptop
+WHERE
+	code IN(SELECT code FROM include_list)
 
 
 

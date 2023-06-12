@@ -2283,33 +2283,6 @@ WHERE
 	B_V_ID IN (SELECT B_V_ID FROM red_paint_use_more_then_once) AND 
 	B_Q_ID IN (SELECT B_Q_ID FROM q_with_blue)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 -- Задание: 97 (qwrqwr: 2013-02-15)
 -- Отобрать из таблицы Laptop те строки, для которых выполняется следующее условие:
 -- значения из столбцов speed, ram, price, screen возможно расположить таким образом, что каждое последующее значение 
@@ -2480,6 +2453,177 @@ FROM
 	Laptop
 WHERE
 	code IN(SELECT code FROM include_list)
+
+-- Задание: 99 (qwrqwr: 2013-03-01)
+-- Рассматриваются только таблицы Income_o и Outcome_o. Известно, что прихода/расхода денег в воскресенье не бывает.
+-- Для каждой даты прихода денег на каждом из пунктов определить дату инкассации по следующим правилам:
+-- 1. Дата инкассации совпадает с датой прихода, если в таблице Outcome_o нет записи о выдаче денег в эту дату на этом пункте.
+-- 2. В противном случае - первая возможная дата после даты прихода денег, которая не является воскресеньем и в Outcome_o не отмечена выдача денег сдатчикам вторсырья в эту дату на этом пункте.
+-- Вывод: пункт, дата прихода денег, дата инкассации.
+
+____________________________________________________________________________
+смещения до 13 дней не показывают изменений
+!!!Ваш запрос вернул правильные данные на основной базе, но не прошел тест на проверочной базе.
+* Несовпадение данных (36)
+WITH 
+out_inc_o AS(
+	SELECT
+		Outcome_o.date AS date_o,
+		Income_o.date AS date_i,
+		Outcome_o.point AS point_o,
+		Income_o.point AS point_i,
+		COALESCE(LEAD(Outcome_o.date, 1) OVER (PARTITION BY  Outcome_o.point ORDER BY Outcome_o.date), 0) AS lead_o_date
+	FROM  
+		Income_o
+	FULL JOIN
+		Outcome_o
+	ON Outcome_o.date = Income_o.date AND Outcome_o.point = Income_o.point)
+---------------------------------------------------------------------------
+
+SELECT 
+    point_i,
+    date_i,
+    CASE
+        WHEN Date_o IS NULL THEN Date_i 
+        WHEN DATEADD(day, 1, Date_i) != lead_o_date
+            AND   DATENAME(dw, DATEADD(day, 1, Date_i)) != 'Sunday'
+            THEN DATEADD(day, 1, Date_i)
+        WHEN DATEADD(day, 2, Date_i) != lead_o_date
+            AND   DATENAME(dw, DATEADD(day, 2, Date_i)) != 'Sunday'
+            THEN DATEADD(day, 2, Date_i)
+        WHEN DATEADD(day, 3, Date_i) != lead_o_date
+            AND   DATENAME(dw, DATEADD(day, 3, Date_i)) != 'Sunday'
+            THEN DATEADD(day, 3, Date_i)
+        WHEN DATEADD(day, 4, Date_i) != lead_o_date
+            AND   DATENAME(dw, DATEADD(day, 4, Date_i)) != 'Sunday'
+            THEN DATEADD(day, 4, Date_i)
+        WHEN DATEADD(day, 13, Date_i) != lead_o_date
+            AND   DATENAME(dw, DATEADD(day, 13, Date_i)) != 'Sunday'
+            THEN DATEADD(day, 13, Date_i)			
+        ELSE '12-12-2099 '
+    END as incas
+FROM  
+    out_inc_o
+WHERE 
+    Date_i IS NOT NULL
+
+-- Задание: 100 ($erges: 2009-06-05)
+-- Написать запрос, который выводит все операции прихода и расхода из таблиц Income и Outcome в следующем виде:
+-- дата, порядковый номер записи за эту дату, пункт прихода, сумма прихода, пункт расхода, сумма расхода.
+-- При этом все операции прихода по всем пунктам, совершённые в течение одного дня, упорядочены по полю code, и так же все операции расхода упорядочены по полю code.
+-- В случае, если операций прихода/расхода за один день было не равное количество, выводить NULL в соответствующих колонках на месте недостающих операций.
+
+__________________________________________________________________________________
+ой не та логика представления, в одной строке могут быть разные точки
+SELECT
+	COALESCE(Income.date,Outcome.date) as date,
+	ROW_NUMBER() OVER(
+		PARTITION BY COALESCE(Income.date,Outcome.date) 
+		ORDER BY COALESCE(Income.code,Outcome.code)
+		) as n,
+	Income.point as Income_point,
+	inc,
+	Outcome.point as Outcome_point,
+	out
+FROM
+	Income
+FULL JOIN
+	Outcome
+ON 
+	Income.date = Outcome.date AND
+	Income.point = Outcome.point
+ORDER BY 
+	COALESCE(Income.code,Outcome.code)
+
+_______________________________________________________________________________________
+WITH
+income_enum AS(
+	SELECT
+		date,
+		ROW_NUMBER() OVER(
+			PARTITION BY date 
+			ORDER BY code
+			) as n,
+		point,
+		inc
+	FROM
+		Income),
+outcome_enum AS(
+	SELECT
+		date,
+		ROW_NUMBER() OVER(
+			PARTITION BY date 
+			ORDER BY code
+			) as n,
+		point,
+		out
+	FROM
+		Outcome)
+-----------------------------------------------------
+SELECT
+	COALESCE(income_enum.date,outcome_enum.date) as date,
+	COALESCE(income_enum.n,outcome_enum.n) as n,
+	income_enum.point as Income_point,
+	inc,
+	outcome_enum.point as Outcome_point,
+	out
+FROM
+	income_enum
+FULL JOIN
+	outcome_enum
+ON 
+	income_enum.date = outcome_enum.date AND
+	income_enum.n = outcome_enum.n
+ORDER BY 
+	COALESCE(income_enum.n,outcome_enum.n)
+
+
+-- 	Задание: 101 (qwrqwr: 2013-03-29)
+-- Таблица Printer сортируется по возрастанию поля code.
+-- Упорядоченные строки составляют группы: первая группа начинается с первой строки, каждая строка со значением color='n' начинает новую группу, группы строк не перекрываются.
+-- Для каждой группы определить: наибольшее значение поля model (max_model), количество уникальных типов принтеров (distinct_types_cou) и среднюю цену (avg_price).
+-- Для всех строк таблицы вывести: code, model, color, type, price, max_model, distinct_types_cou, avg_price.
+
+_____________
+Подсказка: с помощью накопительного итога 
+ГОРДОСТЬ - но сложно нормально описать
+
+WITH 
+first_srep AS(
+	SELECT 
+		* ,
+		CASE	
+			WHEN color = 'n' THEN code
+			ELSE 0
+		END as new_code
+	FROM 
+		Printer
+		
+),
+new_group AS(
+	SELECT
+		*,
+		SUM(new_code) OVER(ORDER BY code
+			ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as new_group
+	FROM 
+		first_srep
+)
+-------------------------------------------------------------------------------
+SELECT
+	code,	
+	model,	
+	color,	
+	type,
+	price,
+	MAX(model) OVER(PARTITION BY new_group) as MAX_model,
+
+	-- COUNT(DISTINCT type) OVER(PARTITION BY new_group) as distinct_types_count, -- не в оконных http://www.sql-tutorial.ru/ru/book_count_distinct_over.html
+	-- https://stackoverflow.com/questions/11202878/partition-function-count-over-possible-using-distinct
+	dense_rank() over (partition by new_group order by type) + dense_rank() over (partition by new_group order by type desc) - 1,
+
+	AVG(price) OVER(PARTITION BY new_group) as avg_price
+FROM 
+	new_group
 
 
 

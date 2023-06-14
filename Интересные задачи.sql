@@ -2626,38 +2626,165 @@ FROM
 	new_group
 
 
+-- Задание: 102 (Serge I: 2003-04-29)
+-- Определить имена разных пассажиров, которые летали
+-- только между двумя городами (туда и/или обратно).
 
+-- не будем джойнить все сразу, така как потом придется повозить с туда и/или обратно
+-- создадим 2 сета город-пассажир, объединим, сгруппируем и отсортируем где меньше 2
 
+WITH 
+pass_town AS(
+	SELECT DISTINCT
+		ID_psg,
+		town_from as town
+	FROM
+		Pass_in_Trip
+	JOIN
+		Trip
+	ON Pass_in_Trip.trip_no = Trip.trip_no
 
+	UNION
 
-
-
-
--- ОКОННЫЕ ФУНКЦИИ (отработка в задаче 106)
--- https://youtu.be/Y03xFWa9yGU
-
+	SELECT DISTINCT
+		ID_psg,
+		town_to as town
+	FROM
+		Pass_in_Trip
+	JOIN
+		Trip
+	ON Pass_in_Trip.trip_no = Trip.trip_no
+),
+pass_qty_town AS(
+	SELECT 
+		ID_psg,
+		COUNT (town) as qty
+	FROM 
+		pass_town
+	GROUP BY 
+		ID_psg
+	HAVING 
+		COUNT (town) = 2)
+----------------------------------------------
 SELECT 
-	B_Q_ID, 
-	B_DATETIME, 
-	ROW_NUMBER() OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS N,
-	B_VOL,
-	SUM(B_VOL) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumul_Q_VOL,
-	SUM(B_VOL) OVER (PARTITION BY B_Q_ID) AS total_Q_VOL,
-	LAG (B_VOL, 1) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS prev,
-	LEAD (B_VOL, 1) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS nxt
-FROM utB
-
-	
-	
-	
-	
-	
-	
-	
-	
-	
+	name 
+FROM 
+	Passenger
+JOIN
+	pass_qty_town
+ON pass_qty_town.ID_psg = Passenger.ID_psg
 
 
+-- Задание: 103 (qwrqwr: 2013-05-17)
+-- Выбрать три наименьших и три наибольших номера рейса. 
+-- Вывести их в шести столбцах одной строки, расположив в порядке от наименьшего к наибольшему.
+-- Замечание: считать, что таблица Trip содержит не менее шести строк
+
+--МОЖНО БЫЛО БЫ И ПРОЩЕ НАВЕРНОЕ 
+-- MY SQL
+
+
+WITH
+min1 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no
+	LIMIT 1),
+min2 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no
+	LIMIT 1 OFFSET 1),
+min3 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no
+	LIMIT 1 OFFSET 2),
+max1 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no DESC
+	LIMIT 1),
+max2 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no DESC
+	LIMIT 1 OFFSET 1),
+max3 AS(
+	SElECT
+		trip_no
+	FROM 
+		Trip
+	ORDER BY trip_no DESC
+	LIMIT 1 OFFSET 2)
+------------------------------------------------------------------------------------
+
+
+SELECT	
+	*
+from 
+	min1
+CROSS JOIN
+	min2
+CROSS JOIN
+	min3
+CROSS JOIN
+	max3
+CROSS JOIN
+	max2
+CROSS JOIN
+	max1
+
+-- Задание: 104 (Serge I: 2013-07-19)
+
+-- Для каждого класса крейсеров, число орудий которого известно, пронумеровать (последовательно от единицы) все орудия.
+-- Вывод: имя класса, номер орудия в формате 'bc-N'.
+-- Справка по теме:
+--  Генерация числовой последовательности
+
+-- идея не самая наверное оптимальная , но все же:
+-- 1 генерим числовую последовательнось, куда бы входила максимальное число орудий( думаю 100 достотчно) - 
+-- НО СТОИТ ПОМНИТЬ ОБ ЭТОМ ОГРАНИЧЕНИИ
+-- делаем декартово произведениякласса и последовательного числа, сравниваем с числом орудий, оставляем <=
+-- склеиваем номер и текс в отдельном столбцу
+
+-- ГОРДОСТЬ
+
+WITH
+data_num_generat AS( -- http://www.sql-tutorial.ru/ru/book_number_sequence_generation/page1.html
+	SELECT * 
+	FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+	UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+	UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+	) x CROSS JOIN
+	(SELECT 1 b UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+	UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+	UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+	) y),
+num_generat AS(
+	SELECT 10*(a-1)+b AS num
+	FROM data_num_generat)
+------------------------------------
+SELECT 
+	class,
+	CONCAT('bc-', CAST(num AS varchar(3)))
+FROM
+	classes
+CROSS JOIN
+	num_generat
+WHERE 
+	type = 'bc' AND
+	numGuns >= num
 
 -- Задание: 105 (qwrqwr: 2013-09-11)
 -- Статистики Алиса, Белла, Вика и Галина нумеруют строки у таблицы Product.
@@ -2682,6 +2809,221 @@ SELECT
 	MAX(A) OVER (PARTITION BY maker) as D
 FROM range_table
 ORDER BY maker
+
+
+-- ОКОННЫЕ ФУНКЦИИ (отработка в задаче 106)
+-- https://youtu.be/Y03xFWa9yGU
+
+SELECT 
+	B_Q_ID, 
+	B_DATETIME, 
+	ROW_NUMBER() OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS N,
+	B_VOL,
+	SUM(B_VOL) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cumul_Q_VOL,
+	SUM(B_VOL) OVER (PARTITION BY B_Q_ID) AS total_Q_VOL,
+	LAG (B_VOL, 1) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS prev,
+	LEAD (B_VOL, 1) OVER (PARTITION BY B_Q_ID ORDER BY B_DATETIME) AS nxt
+FROM utB
+
+-- Задание: 106 (Baser: 2013-09-06)
+-- Пусть v1, v2, v3, v4, ... представляет последовательность вещественных чисел - 
+-- объемов окрасок b_vol, упорядоченных по возрастанию b_datetime, b_q_id, b_v_id.
+-- Найти преобразованную последовательность P1=v1, P2=v1/v2, P3=v1/v2*v3, P4=v1/v2*v3/v4, ..., где каждый следующий член получается из предыдущего умножением на vi (при нечетных i) или делением на vi (при четных i).
+-- Результаты представить в виде b_datetime, b_q_id, b_v_id, b_vol, Pi, где Pi - член последовательности, соответствующий номеру записи i. Вывести Pi с 8-ю знаками после запятой.
+
+кажется задача так далека от реальной, что не соит тратить силы на распутываение описания
+
+-- Задание: 107 (VIG: 2003-09-01)
+-- Для пятого по счету пассажира из числа вылетевших из Ростова в апреле 2003 года определить 
+-- компанию, номер рейса и дату вылета.
+-- Замечание. Считать, что два рейса одновременно вылететь из Ростова не могут.
+
+
+--  · Справка по теме:
+--     Постраничная разбивка записей (пейджинг)
+
+-- порядок пассажиров на 1 рейсе не определен!!!
+
+SELECT
+	c.name,
+	t.trip_no,
+	[date],
+	time_out,
+	ROW_NUMBER() OVER(ORDER BY [date], time_out)
+FROM 
+	Company AS c
+JOIN
+	Trip AS t
+ON c.ID_comp = t.ID_comp
+JOIN
+	Pass_in_Trip AS pt
+ON t.trip_no = pt.trip_no
+WHERE 
+	date BETWEEN '2003-04-01' AND '2003-04-30' AND
+	town_from = 'Rostov'
+	
+-- ВСЕ ОК ПЕРЕПИШЕМ, чтобы работала без подзапросов
+
+SELECT
+	c.name,
+	t.trip_no,
+	[date]
+FROM 
+	Company AS c
+JOIN
+	Trip AS t
+ON c.ID_comp = t.ID_comp
+JOIN
+	Pass_in_Trip AS pt
+ON t.trip_no = pt.trip_no
+WHERE 
+	date BETWEEN '2003-04-01' AND '2003-04-30' AND
+	town_from = 'Rostov' AND
+	ROW_NUMBER() OVER(ORDER BY [date], time_out) = 5
+--- Windowed functions can only appear in the SELECT or ORDER BY clauses.
+
+-- ВСе таки с подзапросом))
+
+WITH 
+row_data AS(
+	SELECT
+		c.name,
+		t.trip_no,
+		[date],
+		time_out,
+		ROW_NUMBER() OVER(ORDER BY [date], time_out) as num
+	FROM 
+		Company AS c
+	JOIN
+		Trip AS t
+	ON c.ID_comp = t.ID_comp
+	JOIN
+		Pass_in_Trip AS pt
+	ON t.trip_no = pt.trip_no
+	WHERE 
+		date BETWEEN '2003-04-01' AND '2003-04-30' AND
+		town_from = 'Rostov')
+---------------------------------------------
+SELECT
+	name,
+	trip_no,
+	[date]
+FROM 
+	row_data
+WHERE 
+	num = 5
+
+
+
+
+-- Задание: 109 (qwrqwr: 2011-01-13)
+-- Вывести:
+-- 1. Названия всех квадратов черного или белого цвета.
+-- 2. Общее количество белых квадратов.
+-- 3. Общее количество черных квадратов.
+
+WITH
+row_data AS(
+	SELECT 
+		Q_NAME,
+		SUM(COALESCE(B_VOL, 0)) as summ-- нули тоже нужны
+	FROM utQ
+	LEFT JOIN utB
+	ON utB.B_Q_ID = utQ.Q_id
+	GROUP BY B_Q_ID, Q_NAME
+	HAVING 
+		SUM(COALESCE(B_VOL, 0)) = 0 OR
+		SUM(COALESCE(B_VOL, 0)) = 765)
+---------------------------------------------
+SELECT
+	Q_NAME,
+	summ
+	COUNT(Q_NAME) OVER(PARTITION BY summ)
+FROM row_data
+--не совсем то, нужно отдельные 2 стобца с  1 значением, го декартово соедение))
+______________________________________________________________
+WITH
+row_data AS(
+	SELECT 
+		Q_NAME,
+		SUM(COALESCE(B_VOL, 0)) as summ-- нули тоже нужны
+	FROM utQ
+	LEFT JOIN utB
+	ON utB.B_Q_ID = utQ.Q_id
+	GROUP BY B_Q_ID, Q_NAME
+	HAVING 
+		SUM(COALESCE(B_VOL, 0)) = 0 OR
+		SUM(COALESCE(B_VOL, 0)) = 765),
+q_list AS(
+	SELECT Q_NAME
+	FROM row_data),
+whites AS(
+	SELECT 	COUNT(*) as whites
+	FROM row_data
+	WHERE summ = 765),
+blacks AS(
+	SELECT 	COUNT(*) as blacks
+	FROM row_data
+	WHERE summ = 0)
+---------------------------------------------
+SELECT *
+FROM q_list
+CROSS JOIN whites
+CROSS JOIN blacks
+
+-- Задание: 110 (Serge I: 2003-12-24)
+-- Определить имена разных пассажиров, когда-либо летевших рейсом, 
+-- который вылетел в субботу, а приземлился в воскресенье.
+
+
+-- Ваш запрос вернул правильные данные на основной базе, но не прошел тест на проверочной базе.
+-- * Неверное число записей (меньше на 2)
+SELECT DISTINCT
+	name
+FROM 
+	Passenger as p
+JOIN
+	Pass_in_Trip AS pt
+ON 
+	p.ID_psg = pt.ID_psg
+JOIN
+	Trip AS t
+ON t.trip_no = pt.trip_no
+WHERE
+	time_in < time_out AND
+	DATEPART(dw, [date]) = 7
+
+-- полные тески
+_______________________________________________
+WITH 
+id AS(
+	SELECT DISTINCT
+		ID_psg
+	FROM 
+		Pass_in_Trip AS pt
+	JOIN
+		Trip AS t
+	ON t.trip_no = pt.trip_no
+	WHERE
+		time_in < time_out AND
+		DATEPART(dw, [date]) = 7)
+------------------------------------
+SELECT
+	name 
+FROM 
+	Passenger as p
+JOIN
+	id 
+ON 
+	p.ID_psg = id.ID_psg
+
+
+
+
+
+
+
+
 
 
 -- Задание: 116 (Velmont: 2013-11-19)

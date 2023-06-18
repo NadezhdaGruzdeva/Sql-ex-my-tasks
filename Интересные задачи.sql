@@ -3018,6 +3018,131 @@ ON
 	p.ID_psg = id.ID_psg
 
 
+-- Задание: 111 (Serge I: 2003-12-24)
+-- Найти НЕ белые и НЕ черные квадраты, которые окрашены разными цветами в пропорции 1:1:1. Вывод: имя квадрата, количество краски одного цвета
+
+
+
+SELECT 
+	Q_NAME,
+	V_COLOR,
+	SUM(COALESCE(B_VOL, 0)) as summ-- нули тоже нужны
+FROM utQ
+LEFT JOIN utB
+ON utB.B_Q_ID = utQ.Q_id
+JOIN  utV
+ON utB.B_V_ID = utV.V_ID
+GROUP BY B_Q_ID, Q_NAME,V_COLOR
+
+
+SELECT 
+	Q_NAME,
+	SUM(CASE V_COLOR WHEN 'B' THEN B_VOL ELSE 0 END) AS B
+	-- ,SUM(CASE V_COLOR WHEN 'R' THEN B_VOL ELSE 0 END) AS R, 
+	-- SUM(CASE V_COLOR WHEN 'G' THEN B_VOL ELSE 0 END) AS G
+FROM utQ
+LEFT JOIN utB
+ON utB.B_Q_ID = utQ.Q_id
+JOIN  utV
+ON utB.B_V_ID = utV.V_ID
+GROUP BY B_Q_ID, Q_NAME
+HAVING 
+	SUM(CASE V_COLOR WHEN 'B' THEN B_VOL ELSE 0 END) != 0 AND
+	SUM(CASE V_COLOR WHEN 'B' THEN B_VOL ELSE 0 END) != 255 AND
+	SUM(CASE V_COLOR WHEN 'B' THEN B_VOL ELSE 0 END) = SUM(CASE V_COLOR WHEN 'R' THEN B_VOL ELSE 0 END)  AND
+	SUM(CASE V_COLOR WHEN 'R' THEN B_VOL ELSE 0 END) = SUM(CASE V_COLOR WHEN 'G' THEN B_VOL ELSE 0 END) 
+
+__________________________________________________________________________________
+-- потренируемсяс со сводными
+-- !! не проходит проверку на 3 проверочной базе
+http://www.sql-tutorial.ru/ru/book_operator_pivot.html
+
+WITH
+row_data AS(
+	SELECT 
+		Q_NAME,
+		V_COLOR,
+		SUM(COALESCE(B_VOL, 0)) as B_VOL-- нули тоже нужны
+	FROM utQ
+	LEFT JOIN utB
+	ON utB.B_Q_ID = utQ.Q_id
+	JOIN  utV
+	ON utB.B_V_ID = utV.V_ID
+	GROUP BY B_Q_ID, Q_NAME,V_COLOR),
+pivot_t AS(
+	SELECT 
+		Q_NAME,
+		isnull([R],0) AS R,
+		isnull([G],0) AS G,
+		isnull([B],0) AS B
+	FROM
+		row_data
+	PIVOT 
+	(SUM(B_VOL) 
+	FOR V_COLOR
+	IN ([R], [G], [B])) pvt)
+------------------------------------
+SELECT
+	Q_NAME,
+	R
+FROM	
+	pivot_t
+WHERE
+	R = G AND
+	G = B AND
+	R != 255 AND
+	R != 0 and
+	R  IS NOT Null 
+
+
+-- Задание: 112 (Serge I: 2003-12-24)
+-- Какое максимальное количество черных квадратов можно было бы окрасить в белый цвет
+-- оставшейся краской
+
+--ГОРДНОСТЬ
+WITH
+color_spent AS(
+	SELECT 
+		V_ID,
+		V_COLOR,
+		SUM(COALESCE(B_VOL, 0)) as B_VOL-- нули тоже нужны
+	FROM 
+		utV
+	LEFT JOIN 
+		utB
+	ON utB.B_V_ID = utV.V_ID
+	GROUP BY 
+		V_ID, 
+		V_COLOR	
+),
+leftover AS(
+	SELECT
+		V_COLOR,
+		SUM(255 - B_VOL) AS leftov
+	FROM 
+		color_spent
+	GROUP BY
+		V_COLOR)
+------------------------------------------
+SELECT
+	CASE 
+		WHEN COUNT(leftov) < 3 THEN 0
+		ELSE MIN(leftov)/ 255
+	END as qty
+FROM
+	leftover
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
